@@ -1,0 +1,54 @@
+name: PUBLISH & RELEASE
+
+on:
+  push:
+    tags:
+      - v*.*.*
+
+jobs:
+  publish-and-release:
+    runs-on: ubuntu-18.04
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set environment variable
+        run: |
+          echo "LIB_VER=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
+        shell: bash
+
+      - name: Library version information upgrade
+        run: |
+          sed -i 's/version =.*/version = "${{ env.LIB_VER }}"/g' ./build.gradle
+
+      - name: Set up JDK 8
+        uses: actions/setup-java@v2
+        with:
+          java-version: '8'
+          distribution: 'zulu'
+          cache: gradle
+
+      - name: Validate Gradle wrapper
+        uses: gradle/wrapper-validation-action@v1
+
+      - name: Publish package
+        uses: gradle/gradle-build-action@v2
+        with:
+          arguments: build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: ./build/libs/*
+
+      - name: Commit and push library version information upgrade
+        run: |
+          git config --global user.email ${{ github.event.pusher.email }}
+          git config --global user.name ${{ github.event.pusher.name }}
+          git remote update
+          git fetch
+          git checkout main
+          git commit -am "Publish and Release version ${{ env.LIB_VER }}"
+          git push
